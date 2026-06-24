@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react';
 import { ToastProvider } from '../ToastProvider';
 import WalletStatus from '../WalletStatus';
+import { ToastProvider } from '../ToastProvider';
 import { axe } from 'jest-axe';
 
 test('WalletStatus has no accessibility violations', async () => {
