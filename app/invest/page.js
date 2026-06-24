@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import ErrorBanner from "@/components/ErrorBanner";
 import InvoiceListSkeleton from "@/components/InvoiceListSkeleton";
+import Pagination from "@/components/Pagination";
 import { copy } from "../copy/en";
+
+/**
+ * Number of invoices rendered per page.  Export allows tests to reference
+ * the same constant without hard-coding a magic number.
+ */
+export const PAGE_SIZE = 10;
 
 /**
  * Mock invoice data — replace with real API call once the backend endpoint
@@ -52,6 +59,12 @@ function loadMockInvoices() {
   });
 }
 
+/**
+ * Returns the screen-reader announcement text for the initial invoice load.
+ *
+ * @param {Array} invoices - The resolved invoice array (may be empty).
+ * @returns {string}
+ */
 export function getInvoiceLoadAnnouncement(invoices) {
   if (!Array.isArray(invoices) || invoices.length === 0) {
     return "No invoices available";
@@ -60,11 +73,40 @@ export function getInvoiceLoadAnnouncement(invoices) {
   return `${invoices.length} investable invoices loaded`;
 }
 
+/**
+ * Returns the screen-reader announcement text for the current pagination state.
+ *
+ * @param {number} shown - Number of invoices currently visible.
+ * @param {number} total - Total number of invoices available.
+ * @returns {string}
+ */
+export function getPaginationAnnouncement(shown, total) {
+  return `Showing ${shown} of ${total} investable invoices`;
+}
+
+/**
+ * InvestMarketplace — main component for the invest page.
+ *
+ * Fetches invoices via `loadInvoices`, renders them PAGE_SIZE at a time,
+ * and exposes a "Load more" control to append the next batch.  Paging
+ * resets whenever a new invoice set arrives so filter changes (future) stay
+ * non-breaking.
+ *
+ * @param {object}   props
+ * @param {Function} [props.loadInvoices] - Async function that resolves to an
+ *   invoice array.  Defaults to the mock loader; injectable for testing.
+ * @returns {JSX.Element}
+ */
 export function InvestMarketplace({ loadInvoices = loadMockInvoices }) {
   const [invoices, setInvoices] = useState(null); // null = loading
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [statusMessage, setStatusMessage] = useState("");
   const [loadError, setLoadError] = useState("");
 
+  /** Ref forwarded to the "Load more" button for focus management. */
+  const loadMoreRef = useRef(null);
+
+  // ── Fetch invoices ────────────────────────────────────────────────────────
   useEffect(() => {
     let isActive = true;
 
@@ -99,6 +141,38 @@ export function InvestMarketplace({ loadInvoices = loadMockInvoices }) {
       isActive = false;
     };
   }, [loadInvoices]);
+
+  // ── Reset paging when a new invoice set arrives ───────────────────────────
+  useEffect(() => {
+    if (invoices !== null) {
+      setVisibleCount(PAGE_SIZE);
+    }
+  }, [invoices]);
+
+  // ── Load-more handler ─────────────────────────────────────────────────────
+  /**
+   * Appends the next PAGE_SIZE items and updates the live-region status.
+   * Focus is moved back to the "Load more" button (if it still exists) so
+   * keyboard users do not lose their place in the page.
+   */
+  const handleLoadMore = useCallback(() => {
+    setVisibleCount((prev) => {
+      const next = Math.min(prev + PAGE_SIZE, invoices?.length ?? prev);
+      const total = invoices?.length ?? 0;
+      setStatusMessage(getPaginationAnnouncement(next, total));
+      return next;
+    });
+
+    // Restore focus on next tick so the button is still in the DOM when we focus it.
+    setTimeout(() => {
+      loadMoreRef.current?.focus();
+    }, 0);
+  }, [invoices]);
+
+  // ── Derived values ────────────────────────────────────────────────────────
+  const visibleInvoices = Array.isArray(invoices)
+    ? invoices.slice(0, visibleCount)
+    : [];
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -229,7 +303,7 @@ export function InvestMarketplace({ loadInvoices = loadMockInvoices }) {
         ) : (
           <>
             <ul className="space-y-4">
-              {invoices.map((inv) => (
+              {visibleInvoices.map((inv) => (
                 <li
                   key={inv.id}
                   className="rounded-xl border border-slate-800 bg-slate-900/50 p-5"
@@ -252,6 +326,14 @@ export function InvestMarketplace({ loadInvoices = loadMockInvoices }) {
                 </li>
               ))}
             </ul>
+
+            <Pagination
+              ref={loadMoreRef}
+              shown={visibleInvoices.length}
+              total={invoices.length}
+              onLoadMore={handleLoadMore}
+            />
+
             <div className="mt-6 rounded-xl border border-slate-800 bg-slate-900/30 p-4 text-sm text-slate-300">
               Note: Yield references are educational only and reflect on-chain basis-point assumptions. Invoice contracts settle at maturity.
             </div>
