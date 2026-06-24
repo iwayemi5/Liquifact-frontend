@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { copy } from './copy/en';
+import { extractKnownFields, safeJsonStringify } from '@/lib/format/safeJson';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -70,9 +71,24 @@ export default function Home() {
             {loading ? 'Checking…' : 'Check backend health'}
           </button>
           {health && (
-            <pre className="mt-4 p-4 rounded-lg bg-slate-950 text-xs text-slate-300 overflow-auto">
-              {JSON.stringify(health, null, 2)}
-            </pre>
+            <div className="mt-4 space-y-2">
+              <div className="rounded-lg bg-slate-950 p-4 text-xs text-slate-300 space-y-1">
+                {Object.entries(extractKnownFields(health)).map(([key, value]) => (
+                  <div key={key}>
+                    <span className="text-slate-500">{key}:</span>{' '}
+                    <span className="text-slate-300">{String(value)}</span>
+                  </div>
+                ))}
+              </div>
+              <details>
+                <summary className="cursor-pointer text-xs text-slate-400 hover:text-slate-300 select-none">
+                  Raw response
+                </summary>
+                <pre className="mt-2 p-4 rounded-lg bg-slate-950 text-xs text-slate-300 overflow-auto whitespace-pre-wrap">
+                  {safeJsonStringify(health)}
+                </pre>
+              </details>
+            </div>
           )}
         </div>
       </main>

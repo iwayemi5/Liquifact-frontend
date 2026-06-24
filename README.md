@@ -122,6 +122,15 @@ See [TESTING.md](TESTING.md) for the full guide covering Jest unit/accessibility
 
 ---
 
+## Security
+
+- **Bounded health rendering** — The home page displays the backend `/health` response
+  through a bounded pipeline: recognised fields (`status`, `message`, `version`) are
+  extracted and shown in a structured summary. The full payload is hidden behind a
+  collapsible `<details>` element and stringified via a depth-limited (max 5 levels),
+  length-truncated (max 2000 characters) formatter (`lib/format/safeJson.js`).
+  This prevents DoS from giant or deeply nested attacker-controlled payloads.
+
 ## License
 
 MIT (see root LiquiFact project for full license).

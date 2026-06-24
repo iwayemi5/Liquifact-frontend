@@ -1,18 +1,21 @@
-const nextJest = require('next/jest');
+const path = require('path');
 
-const createJestConfig = nextJest({
-  dir: './',
-});
+// Normalise to forward-slash paths for Jest's moduleNameMapper replacement
+const rootDir = __dirname.replace(/\\/g, '/');
 
-const customJestConfig = {
+module.exports = {
+  rootDir: __dirname,
   testEnvironment: 'jest-environment-jsdom',
-  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+  setupFilesAfterEnv: [path.join(__dirname, 'jest.setup.js')],
   moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/$1',
+    '^@/(.*)$': rootDir + '/$1',
+    '^next/link$': path.join(__dirname, '__mocks__/next-link.js'),
   },
-  // Playwright e2e specs live under ./tests and use @playwright/test,
-  // which is not a Jest runtime. Keep them out of Jest's collection.
-  testPathIgnorePatterns: ['/node_modules/', '/.next/', '<rootDir>/tests/'],
+  transform: {
+    '^.+\\.(js|jsx|mjs)$': ['babel-jest', { configFile: false, presets: ['next/babel'] }],
+  },
+  transformIgnorePatterns: [
+    '/node_modules/(?!(.pnpm)?)',
+  ],
+  testPathIgnorePatterns: ['/node_modules/', '/.next/', path.join(__dirname, 'tests')],
 };
-
-module.exports = createJestConfig(customJestConfig);
