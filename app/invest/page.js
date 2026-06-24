@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import ErrorBanner from "@/components/ErrorBanner";
 import InvoiceListSkeleton from "@/components/InvoiceListSkeleton";
+import InvoiceSearch from "@/components/InvoiceSearch";
 import { copy } from "../copy/en";
 
 /**
@@ -52,9 +53,15 @@ function loadMockInvoices() {
   });
 }
 
-export function getInvoiceLoadAnnouncement(invoices) {
+export function getInvoiceLoadAnnouncement(invoices, { filterActive, filteredCount } = {}) {
   if (!Array.isArray(invoices) || invoices.length === 0) {
     return "No invoices available";
+  }
+
+  if (filterActive) {
+    return filteredCount === 0
+      ? "No invoices match"
+      : `${filteredCount} of ${invoices.length} invoices match`;
   }
 
   return `${invoices.length} investable invoices loaded`;
@@ -62,8 +69,9 @@ export function getInvoiceLoadAnnouncement(invoices) {
 
 export function InvestMarketplace({ loadInvoices = loadMockInvoices }) {
   const [invoices, setInvoices] = useState(null); // null = loading
-  const [statusMessage, setStatusMessage] = useState("");
   const [loadError, setLoadError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
 
   useEffect(() => {
     let isActive = true;
@@ -81,7 +89,6 @@ export function InvestMarketplace({ loadInvoices = loadMockInvoices }) {
           : [];
 
         setInvoices(normalizedInvoices);
-        setStatusMessage(getInvoiceLoadAnnouncement(normalizedInvoices));
       } catch {
         if (!isActive) {
           return;
@@ -89,7 +96,6 @@ export function InvestMarketplace({ loadInvoices = loadMockInvoices }) {
 
         setInvoices([]);
         setLoadError("Unable to load investable invoices right now.");
-        setStatusMessage("Unable to load investable invoices.");
       }
     };
 
@@ -99,6 +105,28 @@ export function InvestMarketplace({ loadInvoices = loadMockInvoices }) {
       isActive = false;
     };
   }, [loadInvoices]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const filteredInvoices = Array.isArray(invoices)
+    ? invoices.filter((inv) =>
+        inv.issuer.toLowerCase().includes(debouncedQuery.trim().toLowerCase()),
+      )
+    : [];
+
+  const statusMessage = (() => {
+    if (invoices === null) return "";
+    if (loadError) return "Unable to load investable invoices.";
+    return getInvoiceLoadAnnouncement(invoices, {
+      filterActive: Boolean(debouncedQuery.trim()),
+      filteredCount: filteredInvoices.length,
+    });
+  })();
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
@@ -124,6 +152,12 @@ export function InvestMarketplace({ loadInvoices = loadMockInvoices }) {
         {/* Filter Controls - Disabled with Coming Soon Indicators */}
         <div className="mb-8 rounded-xl border border-slate-800 bg-slate-900/30 p-6">
           <div className="flex flex-wrap gap-4 items-center">
+            {/* Issuer Search */}
+            <InvoiceSearch
+              value={searchQuery}
+              onChange={setSearchQuery}
+            />
+
             {/* Yield Range Filter */}
             <div className="flex items-center gap-2">
               <button
@@ -226,10 +260,14 @@ export function InvestMarketplace({ loadInvoices = loadMockInvoices }) {
           <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-8 text-center text-slate-300">
             {copy.invest.emptyState}
           </div>
+        ) : filteredInvoices.length === 0 ? (
+          <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-8 text-center text-slate-400">
+            No invoices match your search. Try different keywords.
+          </div>
         ) : (
           <>
             <ul className="space-y-4">
-              {invoices.map((inv) => (
+              {filteredInvoices.map((inv) => (
                 <li
                   key={inv.id}
                   className="rounded-xl border border-slate-800 bg-slate-900/50 p-5"

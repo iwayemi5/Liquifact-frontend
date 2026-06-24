@@ -1,21 +1,16 @@
-const path = require('path');
-
-// Normalise to forward-slash paths for Jest's moduleNameMapper replacement
-const rootDir = __dirname.replace(/\\/g, '/');
-
-module.exports = {
-  rootDir: __dirname,
+const config = {
   testEnvironment: 'jest-environment-jsdom',
-  setupFilesAfterEnv: [path.join(__dirname, 'jest.setup.js')],
+  setupFilesAfterEnv: ['./jest.setup.js'],
   moduleNameMapper: {
-    '^@/(.*)$': rootDir + '/$1',
-    '^next/link$': path.join(__dirname, '__mocks__/next-link.js'),
+    '^@/(.*)$': '<rootDir>/$1',
+    '^next/link$': '<rootDir>/__mocks__/next-link.jsx',
+    '^next/font/google$': '<rootDir>/__mocks__/next-font-google.js',
   },
+  testPathIgnorePatterns: ['/node_modules/', '/.next/', '<rootDir>/tests/'],
   transform: {
-    '^.+\\.(js|jsx|mjs)$': ['babel-jest', { configFile: false, presets: ['next/babel'] }],
+    '^.+\\.(js|jsx|ts|tsx|mjs)$': ['babel-jest', { configFile: require('path').join(__dirname, 'babel-jest.config.js') }],
   },
-  transformIgnorePatterns: [
-    '/node_modules/(?!(.pnpm)?)',
-  ],
-  testPathIgnorePatterns: ['/node_modules/', '/.next/', path.join(__dirname, 'tests')],
+  transformIgnorePatterns: ['/node_modules/(?!(next|@next)/)'],
 };
+
+module.exports = config;

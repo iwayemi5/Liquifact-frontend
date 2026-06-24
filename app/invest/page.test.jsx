@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import {
   getInvoiceLoadAnnouncement,
   InvestMarketplace,
@@ -154,6 +154,189 @@ describe("InvestMarketplace", () => {
       "Unable to load investable invoices right now.",
     );
   });
+
+  describe("issuer search", () => {
+    const invoices = [
+      {
+        id: "inv-001",
+        issuer: "Acme Supplies Ltd",
+        amount: "12,500",
+        currency: "USD",
+        dueDate: "2026-06-15",
+        yield: "8.2%",
+        status: "Open",
+      },
+      {
+        id: "inv-002",
+        issuer: "Bright Logistics GmbH",
+        amount: "7,800",
+        currency: "EUR",
+        dueDate: "2026-07-01",
+        yield: "7.5%",
+        status: "Open",
+      },
+      {
+        id: "inv-003",
+        issuer: "Sunrise Exports Pte",
+        amount: "22,000",
+        currency: "USD",
+        dueDate: "2026-05-30",
+        yield: "9.1%",
+        status: "Open",
+      },
+    ];
+
+    it("renders a search input with an accessible label", async () => {
+      render(
+        <InvestMarketplace loadInvoices={createDeferredLoader(invoices, 0)} />,
+      );
+      await flushTimers(1);
+
+      const input = screen.getByRole("searchbox", {
+        name: /search by issuer name/i,
+      });
+      expect(input).toBeInTheDocument();
+    });
+
+    it("filters invoices by issuer name case-insensitively", async () => {
+      render(
+        <InvestMarketplace loadInvoices={createDeferredLoader(invoices, 0)} />,
+      );
+      await flushTimers(1);
+
+      fireEvent.change(screen.getByRole("searchbox"), {
+        target: { value: "acme" },
+      });
+
+      await act(async () => {
+        jest.advanceTimersByTime(200);
+      });
+
+      expect(screen.getAllByRole("listitem")).toHaveLength(1);
+      expect(screen.getByText("Acme Supplies Ltd")).toBeInTheDocument();
+    });
+
+    it("debounces the input so filtering does not thrash on every keystroke", async () => {
+      render(
+        <InvestMarketplace loadInvoices={createDeferredLoader(invoices, 0)} />,
+      );
+      await flushTimers(1);
+
+      const input = screen.getByRole("searchbox");
+      fireEvent.change(input, { target: { value: "acme" } });
+
+      // Only 100ms elapsed — debounce (200ms) should NOT have fired yet
+      await act(async () => {
+        jest.advanceTimersByTime(100);
+      });
+
+      expect(screen.getAllByRole("listitem")).toHaveLength(3);
+
+      // Advance past the remaining 100ms to trigger the debounce
+      await act(async () => {
+        jest.advanceTimersByTime(100);
+      });
+
+      expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    });
+
+    it("shows a distinct no-match state when filter yields no results", async () => {
+      render(
+        <InvestMarketplace loadInvoices={createDeferredLoader(invoices, 0)} />,
+      );
+      await flushTimers(1);
+
+      fireEvent.change(screen.getByRole("searchbox"), {
+        target: { value: "zzz" },
+      });
+
+      await act(async () => {
+        jest.advanceTimersByTime(200);
+      });
+
+      expect(
+        screen.getByText(/No invoices match your search/i),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
+    });
+
+    it("clearing the field restores the full list", async () => {
+      render(
+        <InvestMarketplace loadInvoices={createDeferredLoader(invoices, 0)} />,
+      );
+      await flushTimers(1);
+
+      const input = screen.getByRole("searchbox");
+      fireEvent.change(input, { target: { value: "acme" } });
+
+      await act(async () => {
+        jest.advanceTimersByTime(200);
+      });
+
+      expect(screen.getAllByRole("listitem")).toHaveLength(1);
+
+      fireEvent.change(input, { target: { value: "" } });
+
+      await act(async () => {
+        jest.advanceTimersByTime(200);
+      });
+
+      expect(screen.getAllByRole("listitem")).toHaveLength(3);
+    });
+
+    it("treats whitespace-only query as empty", async () => {
+      render(
+        <InvestMarketplace loadInvoices={createDeferredLoader(invoices, 0)} />,
+      );
+      await flushTimers(1);
+
+      fireEvent.change(screen.getByRole("searchbox"), {
+        target: { value: "  " },
+      });
+
+      await act(async () => {
+        jest.advanceTimersByTime(200);
+      });
+
+      expect(screen.getAllByRole("listitem")).toHaveLength(3);
+    });
+
+    it("announces the filtered count in the status region", async () => {
+      render(
+        <InvestMarketplace loadInvoices={createDeferredLoader(invoices, 0)} />,
+      );
+      await flushTimers(1);
+
+      fireEvent.change(screen.getByRole("searchbox"), {
+        target: { value: "acme" },
+      });
+
+      await act(async () => {
+        jest.advanceTimersByTime(200);
+      });
+
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "1 of 3 invoices match",
+      );
+    });
+
+    it("announces 'No invoices match' when filter has no results", async () => {
+      render(
+        <InvestMarketplace loadInvoices={createDeferredLoader(invoices, 0)} />,
+      );
+      await flushTimers(1);
+
+      fireEvent.change(screen.getByRole("searchbox"), {
+        target: { value: "zzz" },
+      });
+
+      await act(async () => {
+        jest.advanceTimersByTime(200);
+      });
+
+      expect(screen.getByRole("status")).toHaveTextContent("No invoices match");
+    });
+  });
 });
 
 describe("getInvoiceLoadAnnouncement", () => {
@@ -162,5 +345,25 @@ describe("getInvoiceLoadAnnouncement", () => {
     expect(getInvoiceLoadAnnouncement([{ id: "1" }, { id: "2" }])).toBe(
       "2 investable invoices loaded",
     );
+  });
+
+  it("returns filtered count announcement when filterActive is true", () => {
+    const invoices = [{ id: "1" }, { id: "2" }, { id: "3" }];
+    expect(
+      getInvoiceLoadAnnouncement(invoices, {
+        filterActive: true,
+        filteredCount: 2,
+      }),
+    ).toBe("2 of 3 invoices match");
+  });
+
+  it("returns no-match announcement when filterActive and filteredCount is 0", () => {
+    const invoices = [{ id: "1" }, { id: "2" }];
+    expect(
+      getInvoiceLoadAnnouncement(invoices, {
+        filterActive: true,
+        filteredCount: 0,
+      }),
+    ).toBe("No invoices match");
   });
 });
