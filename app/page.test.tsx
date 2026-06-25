@@ -9,6 +9,17 @@ import {
 import Home from "./page";
 import { getHealth } from "../lib/api/health";
 
+jest.mock("next/navigation", () => ({
+  usePathname: () => "/",
+}));
+
+jest.mock("../components/WalletStatusLazy", () => ({
+  __esModule: true,
+  default: function MockWalletStatusLazy() {
+    return <button type="button">Connect Wallet</button>;
+  },
+}));
+
 // IMPORTANT: mock before tests
 jest.mock("../lib/api/health", () => ({
   __esModule: true,

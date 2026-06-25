@@ -4,7 +4,6 @@ import { useState } from 'react';
 import Link from 'next/link';
 import NavMenu from '../components/NavMenu';
 import { copy } from './copy/en';
-import NavMenu from '../components/NavMenu';
 import { getHealth } from '../lib/api/health';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -26,6 +25,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100">
+      {/* Shared site header for the home page and the rest of the app. */}
       <NavMenu />
 
       <main id="main-content" className="max-w-4xl mx-auto px-6 py-16">
