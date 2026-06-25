@@ -245,10 +245,36 @@ Tech: **Next.js 16** (App Router), **React 19**, **Tailwind CSS 4**.
 
 GitHub Actions runs on every push and pull request to `main`:
 
+- **Lockfile check** — asserts `package-lock.json` is in sync with `package.json`
 - **Lint** — `npm run lint`
 - **Build** — `npm run build`
 
-Keep both passing before opening a PR.
+Keep all checks passing before opening a PR.
+
+To reproduce the lockfile check locally:
+
+```bash
+npm install --package-lock-only --ignore-scripts
+git diff --exit-code package-lock.json  # exits 1 if drifted
+```
+
+---
+
+## Dependency updates
+
+Dependabot opens weekly PRs on Monday to keep npm packages and GitHub Actions current.
+
+PRs are grouped to limit noise:
+- **nextjs-react** — `next`, `react`, `react-dom`, and their `@types` packages together (coordinated bumps).
+- **dev-tooling** — all remaining `devDependencies` in one PR.
+- **github-actions** — action version bumps in a separate PR.
+
+**Reviewing a Dependabot PR**
+
+1. Check the CI run passes (lockfile check + lint + build).
+2. Scan the changelog/release notes linked in the PR description for breaking changes.
+3. For `nextjs-react` bumps, do a quick smoke test (`npm run dev`) locally.
+4. Approve and merge — **do not enable auto-merge**; every dependency bump requires a human reviewer.
 
 ---
 
