@@ -136,6 +136,11 @@ Font: **Geist** is loaded via `next/font/google` (see `app/layout.js`). Headings
 
 See [TESTING.md](TESTING.md) for the full guide covering Jest unit/accessibility tests and Playwright end‑to‑end setup.
 
+### Notes about newly added tests
+
+- `app/page.test.tsx` — Unit tests covering the Home page API health check interaction (success, network error, and loading/disabled button states). These tests mock `global.fetch` and use `@testing-library/user-event` for interaction. They are intended to improve coverage for the home page health-check flow.
+
+
 ---
 
 ## Contracts
@@ -203,7 +208,7 @@ For frontend/backend contract details see:
 | `npm run build`    | Production build             |
 | `npm run start`    | Start production server      |
 | `npm run lint`     | Run ESLint                   |
-| `npm run test:e2e` | Run Playwright smoke tests   |
+| `npm run test:e2e` | Run Playwright smoke tests (toast & invest marketplace) |
 
 Default: [http://localhost:3000](http://localhost:3000). The home page can check API health at `NEXT_PUBLIC_API_URL` (default `http://localhost:3001`).
 
@@ -243,14 +248,53 @@ Tech: **Next.js 16** (App Router), **React 19**, **Tailwind CSS 4**.
 
 ---
 
+## Accessibility
+
+### Skip-to-content link
+
+A visually-hidden "Skip to content" link is the first focusable element on every page. It becomes visible when focused (first Tab press) and jumps the keyboard user past the navigation header directly to `<main id="main-content">`.
+
+All interactive elements (nav links, card links, buttons) use a consistent `focus-visible` cyan outline that matches the brand's primary colour. The utility classes are defined in `app/globals.css`:
+
+- `.skip-link` — positions and reveals the skip link on focus
+- `.focus-ring` — reusable `focus-visible` outline for custom interactive elements
+
+---
+
 ## CI/CD
 
 GitHub Actions runs on every push and pull request to `main`:
 
+- **Lockfile check** — asserts `package-lock.json` is in sync with `package.json`
 - **Lint** — `npm run lint`
 - **Build** — `npm run build`
 
-Keep both passing before opening a PR.
+Keep all checks passing before opening a PR.
+
+To reproduce the lockfile check locally:
+
+```bash
+npm install --package-lock-only --ignore-scripts
+git diff --exit-code package-lock.json  # exits 1 if drifted
+```
+
+---
+
+## Dependency updates
+
+Dependabot opens weekly PRs on Monday to keep npm packages and GitHub Actions current.
+
+PRs are grouped to limit noise:
+- **nextjs-react** — `next`, `react`, `react-dom`, and their `@types` packages together (coordinated bumps).
+- **dev-tooling** — all remaining `devDependencies` in one PR.
+- **github-actions** — action version bumps in a separate PR.
+
+**Reviewing a Dependabot PR**
+
+1. Check the CI run passes (lockfile check + lint + build).
+2. Scan the changelog/release notes linked in the PR description for breaking changes.
+3. For `nextjs-react` bumps, do a quick smoke test (`npm run dev`) locally.
+4. Approve and merge — **do not enable auto-merge**; every dependency bump requires a human reviewer.
 
 ---
 
@@ -357,6 +401,21 @@ export default function MyPage() {
 
 See [TESTING.md](TESTING.md) for the full guide covering Jest unit/accessibility tests and Playwright end-to-end setup.
 
+## Backend Health Check
+
+The home page health check now:
+
+- Uses an 8 second timeout.
+- Aborts hung requests.
+- Safely handles HTML and malformed JSON responses.
+- Reports one of the following:
+
+  - Connected
+  - Degraded
+  - Unreachable
+
+- Provides a detailed disclosure for raw responses.
+
 ## Contracts
 
 - [WALLET_INTEGRATION_CONTRACT.md](WALLET_INTEGRATION_CONTRACT.md)
@@ -376,3 +435,30 @@ See [TESTING.md](TESTING.md) for the full guide covering Jest unit/accessibility
 ## License
 
 MIT (see root LiquiFact project for full license).
+
+
+### Code-splitting: WalletStatus
+
+`WalletStatus` is lazy-loaded via `next/dynamic` (`ssr: false`) so the wallet
+chunk (including the upcoming Stellar/Freighter SDK) is **not** shipped in the
+initial JS bundle for routes that do not need immediate wallet access
+(e.g. the static home page).
+
+| Route | Before (kB) | After (kB) | Δ |
+|---|---|---|---|
+| `/` (home) | ~X kb | ~X kb | –Y kb |
+| `/invoices` | ~X kb | ~X kb | –Y kb |
+| `/invest` | ~X kb | ~X kb | –Y kb |
+
+*Run `npm run build` and inspect `.next/static/chunks` to verify. The wallet
+chunk appears as a separate file and is only fetched when the header mounts
+`WalletStatusLazy`.*
+
+**Why `ssr: false`?** The wallet SDK accesses `window` during init; server
+rendering would crash and bloat the SSR bundle. A static placeholder with
+matching outer dimensions (`h-12 w-80`) prevents layout shift while the chunk
+downloads.
+
+**Placeholder → component swap** is handled by `next/dynamic` automatically.
+The placeholder is `aria-hidden` so screen readers only interact with the
+live region inside the real `WalletStatus` once it mounts.
