@@ -430,6 +430,65 @@ The home page health check now:
   length-truncated (max 2000 characters) formatter (`lib/format/safeJson.js`).
   This prevents DoS from giant or deeply nested attacker-controlled payloads.
 
+### HTTP security headers & Content-Security-Policy
+
+Every response carries a baseline set of security headers, attached via the
+`headers()` function in [`next.config.mjs`](next.config.mjs). The values are built by
+[`lib/securityHeaders.mjs`](lib/securityHeaders.mjs) (a small pure module so the policy
+can be unit-tested and later reused by middleware for per-request nonces). Coverage is
+asserted in [`security/headers.test.tsx`](security/headers.test.tsx).
+
+| Header | Value | Purpose |
+|--------|-------|---------|
+| `Content-Security-Policy` | see below | Primary defence against XSS / data injection |
+| `X-Content-Type-Options` | `nosniff` | Stops MIME-sniffing away from the declared type |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Avoids leaking invoice/wallet IDs in the `Referer` |
+| `X-Frame-Options` | `DENY` | Legacy clickjacking protection (complements `frame-ancestors`) |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=(), …` | Disables unused powerful browser features |
+| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` | Forces HTTPS (ignored over plain http/localhost) |
+| `Cross-Origin-Opener-Policy` | `same-origin` | Isolates the browsing context group |
+
+**Content-Security-Policy directives** (each is annotated in `lib/securityHeaders.mjs`):
+
+| Directive | Value | Why |
+|-----------|-------|-----|
+| `default-src` | `'self'` | Deny-by-default for anything not listed below |
+| `script-src` | `'self' 'unsafe-inline'` (+ `'unsafe-eval'` in dev only) | Next.js App Router injects an inline bootstrap script. `'unsafe-eval'` is added **only** under `next dev` for React Fast Refresh and never ships to production |
+| `style-src` | `'self' 'unsafe-inline' https://fonts.googleapis.com` | `'unsafe-inline'` is required because **next/font** and Tailwind/Next inject inline `<style>` tags and `style` attributes (critical CSS + font variables) that are generated per build and cannot be hashed ahead of time. This relaxation is scoped to styles only — scripts stay far more tightly controlled |
+| `font-src` | `'self' https://fonts.gstatic.com data:` | Geist is self-hosted by `next/font` at build time; the Google Fonts host and `data:` are defensive fallbacks |
+| `connect-src` | `'self' <NEXT_PUBLIC_API_URL origin>` (+ `ws: wss:` in dev) | **Allow-lists the backend API origin** so the home page health check and future `fetch()` calls are not blocked. `ws:`/`wss:` are added only in dev for Hot Module Replacement |
+| `img-src` | `'self' data: blob:` | Inline/generated images and the favicon |
+| `frame-ancestors` | `'none'` | Blocks the app from being framed (clickjacking) |
+| `base-uri` / `object-src` / `form-action` | `'self'` / `'none'` / `'self'` | Prevent `<base>` hijacking, plugins, and off-origin form posts |
+
+The backend origin is read from `NEXT_PUBLIC_API_URL` (default `http://localhost:3001`).
+If you point the app at a different backend, that origin is automatically added to
+`connect-src` — no manual CSP edit needed.
+
+#### Verifying the headers at runtime
+
+```bash
+npm run build && npm run start
+# in another shell:
+curl -sI http://localhost:3000 | grep -i -E 'content-security-policy|x-frame|referrer|permissions|content-type-options'
+```
+
+Load each page (`/`, `/invoices`, `/invest`) with DevTools open and confirm there are
+**no CSP violation messages** in the console, that the Geist font renders, and that the
+**Check API Health** button still reaches the backend.
+
+#### Threat-model note
+
+These headers harden the app ahead of wallet and API integration that will handle
+financial data. The CSP is the main mitigation for **cross-site scripting** — even if
+attacker-controlled markup reaches the DOM, it cannot load off-origin scripts, exfiltrate
+data to an unlisted host (`connect-src`), or be framed for clickjacking (`frame-ancestors`).
+`nosniff` and `Referrer-Policy` close common information-leak / content-confusion vectors.
+The known residual is `'unsafe-inline'` for **styles** (not scripts): CSS-only injection
+remains possible, which is low-impact compared to script execution. The planned next step
+is to move to per-request **nonces** via `middleware.js`, which would let us drop
+`'unsafe-inline'` from `script-src` entirely.
+
 ## License
 
 MIT (see root LiquiFact project for full license).
