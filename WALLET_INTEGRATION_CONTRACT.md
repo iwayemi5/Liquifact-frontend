@@ -81,7 +81,7 @@ Target wallets for integration:
 - `disconnect()` - Terminate connection and clear persisted snapshot
 
 ### Global State Management
-`WalletProvider` (see `components/WalletProvider.jsx`) supplies shared wallet state via the `useWallet()` hook. It is mounted once in `app/layout.js` and persists a minimal, non-sensitive snapshot to `localStorage` so the UI can rehydrate after reload:
+`WalletProvider` (see `components/WalletProvider.jsx`) is the **single source of truth** for wallet state. It is mounted once in `app/layout.js` and persists a minimal, non-sensitive snapshot to `localStorage` so the UI can rehydrate after reload.
 
 ```javascript
 // Persisted snapshot shape (liquifact-wallet-snapshot)
@@ -93,7 +93,9 @@ Target wallets for integration:
 }
 ```
 
-Never persist balances, private keys, or full signing material. `WalletStatus` consumes `useWallet()` instead of local `useState`.
+Never persist balances, private keys, or full signing material. `WalletStatus` consumes `useWallet()` from `WalletProvider`.
+
+> **Note:** `components/WalletContext.jsx` is a deprecated compatibility shim that re-exports everything from `WalletProvider.jsx`. All new code should import directly from `@/components/WalletProvider`.
 
 Use global state for:
 - Wallet connection status across app

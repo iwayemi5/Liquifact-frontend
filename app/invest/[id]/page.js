@@ -6,7 +6,7 @@ import { useParams, notFound } from "next/navigation";
 import ErrorBanner from "@/components/ErrorBanner";
 import InvoiceListSkeleton from "@/components/InvoiceListSkeleton";
 import WalletStatus from "@/components/WalletStatus";
-import { useWallet, WALLET_STATES } from "@/components/WalletContext";
+import { useWallet, WALLET_STATES } from "@/components/WalletProvider";
 import { copy } from "../../copy/en";
 import { getInvoiceById } from "../lib";
 
@@ -24,7 +24,7 @@ export function InvoiceDetail({ loadInvoice = loadInvoiceById }) {
   const id = params?.id;
   const [invoice, setInvoice] = useState(null); // null = loading
   const [loadError, setLoadError] = useState("");
-  const { walletState, connectWallet } = useWallet();
+  const { state: walletState, connect } = useWallet();
 
   useEffect(() => {
     if (!id) {
@@ -69,7 +69,7 @@ export function InvoiceDetail({ loadInvoice = loadInvoiceById }) {
 
   const handleFund = () => {
     if (walletState === WALLET_STATES.DISCONNECTED) {
-      connectWallet();
+      connect();
     }
   };
 

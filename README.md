@@ -247,7 +247,7 @@ liquifact-frontend/
 │           └── not-found.js # Unknown invoice fallback
 ├── components/
 │   ├── WalletStatus.jsx    # Wallet connection UI
-│   └── WalletContext.jsx   # Shared wallet state provider
+│   └── WalletProvider.jsx  # Single source of truth for shared wallet state
 ├── public/
 ├── .env.local.example
 ├── eslint.config.mjs

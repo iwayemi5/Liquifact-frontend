@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 const ToastContext = createContext(null);
+export { ToastContext };
 const AUTO_DISMISS_MS = 5000;
 const VARIANT_STYLES = {
   success: {
