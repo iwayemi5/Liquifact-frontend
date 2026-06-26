@@ -378,111 +378,124 @@ describe("InvestMarketplace", () => {
     );
   });
 
-  it("updates the search input immediately but waits to filter until the debounce settles", async () => {
-    jest.useFakeTimers();
-    const invoices = MOCK_INVOICES;
+  it("filters invoices by currency", async () => {
+    const invoices = [
+      { id: "inv-001", issuer: "A", amount: "100", currency: "USD", dueDate: "2026-06-15", yield: "5%", status: "Open" },
+      { id: "inv-002", issuer: "B", amount: "200", currency: "EUR", dueDate: "2026-07-01", yield: "6%", status: "Open" },
+      { id: "inv-003", issuer: "C", amount: "300", currency: "USD", dueDate: "2026-05-30", yield: "7%", status: "Open" },
+    ];
 
     render(<InvestMarketplace loadInvoices={createDeferredLoader(invoices, 0)} />);
     await flushTimers(0);
 
-    const searchInput = screen.getByRole("searchbox", { name: /search by issuer name/i });
+    fireEvent.click(screen.getByLabelText("Filter by EUR"));
 
-    fireEvent.change(searchInput, { target: { value: "Bright" } });
-
-    expect(searchInput).toHaveValue("Bright");
-    expect(screen.getAllByRole("listitem")).toHaveLength(3);
-
-    await flushTimers(SEARCH_DEBOUNCE_MS - 1);
-    expect(screen.getAllByRole("listitem")).toHaveLength(3);
-
-    await flushTimers(1);
     expect(screen.getAllByRole("listitem")).toHaveLength(1);
-    expect(screen.getByText("Bright Logistics GmbH")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("1 of 3 invoices match");
+    expect(screen.getByText("B")).toBeInTheDocument();
   });
 
-  it("cancels earlier debounce timers during rapid typing and only applies the final query", async () => {
-    jest.useFakeTimers();
-    const invoices = MOCK_INVOICES;
+  it("filters invoices by minimum yield", async () => {
+    const invoices = [
+      { id: "inv-001", issuer: "A", amount: "100", currency: "USD", dueDate: "2026-06-15", yield: "5.2%", status: "Open" },
+      { id: "inv-002", issuer: "B", amount: "200", currency: "EUR", dueDate: "2026-07-01", yield: "7.5%", status: "Open" },
+      { id: "inv-003", issuer: "C", amount: "300", currency: "USD", dueDate: "2026-05-30", yield: "9.1%", status: "Open" },
+    ];
 
     render(<InvestMarketplace loadInvoices={createDeferredLoader(invoices, 0)} />);
     await flushTimers(0);
 
-    const searchInput = screen.getByRole("searchbox", { name: /search by issuer name/i });
+    fireEvent.change(screen.getByLabelText("Minimum yield percentage"), { target: { value: "6" } });
 
-    fireEvent.change(searchInput, { target: { value: "Acm" } });
-    await flushTimers(SEARCH_DEBOUNCE_MS - 50);
-    fireEvent.change(searchInput, { target: { value: "Sunrise" } });
-
-    await flushTimers(SEARCH_DEBOUNCE_MS - 1);
-    expect(screen.getAllByRole("listitem")).toHaveLength(3);
-
-    await flushTimers(1);
-    expect(screen.getAllByRole("listitem")).toHaveLength(1);
-    expect(screen.getByText("Sunrise Exports Pte")).toBeInTheDocument();
-    expect(screen.queryByText("Acme Supplies Ltd")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByText("B")).toBeInTheDocument();
+    expect(screen.getByText("C")).toBeInTheDocument();
   });
 
-  it("restores the full list after clearing the search once the debounce settles", async () => {
-    jest.useFakeTimers();
-    const invoices = MOCK_INVOICES;
+  it("filters invoices by maturity date range", async () => {
+    const invoices = [
+      { id: "inv-001", issuer: "A", amount: "100", currency: "USD", dueDate: "2026-06-15", yield: "5%", status: "Open" },
+      { id: "inv-002", issuer: "B", amount: "200", currency: "EUR", dueDate: "2026-07-01", yield: "6%", status: "Open" },
+    ];
 
     render(<InvestMarketplace loadInvoices={createDeferredLoader(invoices, 0)} />);
     await flushTimers(0);
 
-    const searchInput = screen.getByRole("searchbox", { name: /search by issuer name/i });
-
-    fireEvent.change(searchInput, { target: { value: "Bright" } });
-    await flushTimers(SEARCH_DEBOUNCE_MS);
+    fireEvent.change(screen.getByLabelText("Maturity date from"), { target: { value: "2026-07-01" } });
 
     expect(screen.getAllByRole("listitem")).toHaveLength(1);
-
-    fireEvent.click(screen.getByRole("button", { name: /clear search/i }));
-
-    expect(searchInput).toHaveValue("");
-    expect(screen.getAllByRole("listitem")).toHaveLength(1);
-
-    await flushTimers(SEARCH_DEBOUNCE_MS);
-    expect(screen.getAllByRole("listitem")).toHaveLength(3);
-    expect(screen.getByRole("status")).toHaveTextContent("3 investable invoices loaded");
+    expect(screen.getByText("B")).toBeInTheDocument();
   });
 
-  it("announces a debounced no-match result instead of filtering on every keystroke", async () => {
-    jest.useFakeTimers();
-    const invoices = MOCK_INVOICES;
+  it("sorts invoices by yield descending", async () => {
+    const invoices = [
+      { id: "inv-001", issuer: "A", amount: "100", currency: "USD", dueDate: "2026-06-15", yield: "5%", status: "Open" },
+      { id: "inv-002", issuer: "B", amount: "200", currency: "EUR", dueDate: "2026-07-01", yield: "9%", status: "Open" },
+      { id: "inv-003", issuer: "C", amount: "300", currency: "USD", dueDate: "2026-05-30", yield: "7%", status: "Open" },
+    ];
 
     render(<InvestMarketplace loadInvoices={createDeferredLoader(invoices, 0)} />);
     await flushTimers(0);
 
-    fireEvent.change(
-      screen.getByRole("searchbox", { name: /search by issuer name/i }),
-      { target: { value: "Missing Issuer" } },
-    );
+    fireEvent.change(screen.getByLabelText("Sort options"), { target: { value: "yield_desc" } });
 
-    await flushTimers(SEARCH_DEBOUNCE_MS);
-
-    expect(screen.getByText(/no invoices match your search/i)).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("No invoices match");
+    const items = screen.getAllByRole("listitem");
+    expect(items).toHaveLength(3);
+    expect(items[0]).toHaveTextContent("9%");
+    expect(items[1]).toHaveTextContent("7%");
+    expect(items[2]).toHaveTextContent("5%");
   });
 
-  it("cleans up the debounce timer on unmount", async () => {
-    jest.useFakeTimers();
-    const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
-    const { unmount } = render(
-      <InvestMarketplace loadInvoices={createDeferredLoader(MOCK_INVOICES, 0)} />,
-    );
+  it("shows empty filtered state message when no invoices match", async () => {
+    render(<InvestMarketplace loadInvoices={createDeferredLoader([], 0)} />);
     await flushTimers(0);
 
-    fireEvent.change(
-      screen.getByRole("searchbox", { name: /search by issuer name/i }),
-      { target: { value: "Bright" } },
-    );
+    expect(screen.getByText(/No investable invoices\./i)).toBeInTheDocument();
+  });
 
-    unmount();
-    await flushTimers(SEARCH_DEBOUNCE_MS);
+  it("shows no-match message when filters eliminate all invoices", async () => {
+    const invoices = [
+      { id: "inv-001", issuer: "A", amount: "100", currency: "USD", dueDate: "2026-06-15", yield: "5%", status: "Open" },
+    ];
 
-    expect(consoleErrorSpy).not.toHaveBeenCalled();
-    consoleErrorSpy.mockRestore();
+    render(<InvestMarketplace loadInvoices={createDeferredLoader(invoices, 0)} />);
+    await flushTimers(0);
+
+    fireEvent.click(screen.getByLabelText("Filter by EUR"));
+
+    expect(screen.getByText("No invoices match your filters.")).toBeInTheDocument();
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+  });
+
+  it("clears all filters and restores full list", async () => {
+    const invoices = [
+      { id: "inv-001", issuer: "A", amount: "100", currency: "USD", dueDate: "2026-06-15", yield: "5%", status: "Open" },
+      { id: "inv-002", issuer: "B", amount: "200", currency: "EUR", dueDate: "2026-07-01", yield: "6%", status: "Open" },
+    ];
+
+    render(<InvestMarketplace loadInvoices={createDeferredLoader(invoices, 0)} />);
+    await flushTimers(0);
+
+    fireEvent.click(screen.getByLabelText("Filter by EUR"));
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+
+    fireEvent.click(screen.getByLabelText("Clear all filters"));
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+  });
+
+  it("announces filtered results in the live region", async () => {
+    const invoices = [
+      { id: "inv-001", issuer: "A", amount: "100", currency: "USD", dueDate: "2026-06-15", yield: "5%", status: "Open" },
+      { id: "inv-002", issuer: "B", amount: "200", currency: "EUR", dueDate: "2026-07-01", yield: "6%", status: "Open" },
+    ];
+
+    render(<InvestMarketplace loadInvoices={createDeferredLoader(invoices, 0)} />);
+    await flushTimers(0);
+
+    expect(screen.getByRole("status")).toHaveTextContent("2 investable invoices loaded");
+
+    fireEvent.click(screen.getByLabelText("Filter by EUR"));
+
+    expect(screen.getByRole("status")).toHaveTextContent("1 of 2 invoices match");
   });
 });
 

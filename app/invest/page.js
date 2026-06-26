@@ -1,12 +1,13 @@
 "use client";
 import Button from "../../components/Button";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import ErrorBanner from "../../components/ErrorBanner";
 import InvoiceListSkeleton from "../../components/InvoiceListSkeleton";
-import Pagination from "../../components/Pagination";
 import InvoiceSearch from "../../components/InvoiceSearch";
+import NavMenu from "../../components/NavMenu";
+import InvoiceFilters, { DEFAULT_FILTERS, hasActiveFilters } from "../../components/InvoiceFilters";
 import { copy } from "../copy/en";
 import { loadMockInvoices } from "./lib";
 
@@ -74,6 +75,7 @@ export function InvestMarketplace({ loadInvoices = loadMockInvoices }) {
   const [loadError, setLoadError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
 
   /** Ref forwarded to the "Load more" button for focus management. */
   const loadMoreRef = useRef(null);
@@ -123,46 +125,97 @@ export function InvestMarketplace({ loadInvoices = loadMockInvoices }) {
     };
   }, [loadInvoices]);
 
-  // ── Derived values ────────────────────────────────────────────────────────
-  const allInvoices = Array.isArray(invoices) ? invoices : [];
-  const normalizedQuery = debouncedQuery.trim().toLowerCase();
-  const filterActive = normalizedQuery.length > 0;
-  const filteredInvoices = filterActive
-    ? allInvoices.filter((invoice) =>
-        invoice.issuer.toLowerCase().includes(normalizedQuery),
-      )
-    : allInvoices;
-  const visibleInvoices = filteredInvoices.slice(0, visibleCount);
-  const isNoMatchState = filterActive && filteredInvoices.length === 0;
-  const baseStatusMessage =
-    loadError || invoices === null
-      ? loadError
-        ? copy.invest.errorStatus
-        : ""
-      : getInvoiceLoadAnnouncement(allInvoices, {
-          filterActive,
-          filteredCount: filteredInvoices.length,
+  // ── Reset paging when a new invoice set arrives ───────────────────────────
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const filteredInvoices = useMemo(() => {
+    if (!Array.isArray(invoices)) return [];
+
+    let result = invoices;
+
+    if (debouncedQuery.trim()) {
+      const q = debouncedQuery.trim().toLowerCase();
+      result = result.filter((inv) => inv.issuer.toLowerCase().includes(q));
+    }
+
+    if (filters.yieldMin !== "") {
+      const min = parseFloat(filters.yieldMin);
+      if (!isNaN(min)) {
+        result = result.filter((inv) => {
+          const y = parseFloat(inv.yield);
+          return !isNaN(y) && y >= min;
         });
-  const statusMessage = paginationAnnouncement || baseStatusMessage;
+      }
+    }
 
-  const handleSearchChange = useCallback((value) => {
-    setSearchQuery(value);
-    setVisibleCount(PAGE_SIZE);
-    setPaginationAnnouncement("");
-  }, []);
+    if (filters.yieldMax !== "") {
+      const max = parseFloat(filters.yieldMax);
+      if (!isNaN(max)) {
+        result = result.filter((inv) => {
+          const y = parseFloat(inv.yield);
+          return !isNaN(y) && y <= max;
+        });
+      }
+    }
 
-  // ── Load-more handler ─────────────────────────────────────────────────────
-  /**
-   * Appends the next PAGE_SIZE items and updates the live-region status.
-   * Focus is moved back to the "Load more" button (if it still exists) so
-   * keyboard users do not lose their place in the page.
-   */
-  const handleLoadMore = useCallback(() => {
-    setVisibleCount((prev) => {
-      const next = Math.min(prev + PAGE_SIZE, filteredInvoices.length || prev);
-      const total = filteredInvoices.length;
-      setPaginationAnnouncement(getPaginationAnnouncement(next, total));
-      return next;
+    if (filters.currency) {
+      result = result.filter((inv) => inv.currency === filters.currency);
+    }
+
+    if (filters.maturityFrom) {
+      const from = new Date(filters.maturityFrom);
+      result = result.filter((inv) => new Date(inv.dueDate) >= from);
+    }
+
+    if (filters.maturityTo) {
+      const to = new Date(filters.maturityTo);
+      result = result.filter((inv) => new Date(inv.dueDate) <= to);
+    }
+
+    if (filters.sort) {
+      result = [...result].sort((a, b) => {
+        switch (filters.sort) {
+          case "yield_desc":
+            return parseFloat(b.yield) - parseFloat(a.yield);
+          case "yield_asc":
+            return parseFloat(a.yield) - parseFloat(b.yield);
+          case "amount_desc":
+            return (
+              parseFloat(b.amount.replace(/,/g, "")) -
+              parseFloat(a.amount.replace(/,/g, ""))
+            );
+          case "amount_asc":
+            return (
+              parseFloat(a.amount.replace(/,/g, "")) -
+              parseFloat(b.amount.replace(/,/g, ""))
+            );
+          case "maturity_asc":
+            return new Date(a.dueDate) - new Date(b.dueDate);
+          case "maturity_desc":
+            return new Date(b.dueDate) - new Date(a.dueDate);
+          default:
+            return 0;
+        }
+      });
+    }
+
+    return result;
+  }, [invoices, debouncedQuery, filters]);
+
+  const filterActive =
+    hasActiveFilters(filters) || Boolean(debouncedQuery.trim());
+
+  const statusMessage = (() => {
+    if (invoices === null) return "";
+    if (loadError) return "Unable to load investable invoices.";
+    return getInvoiceLoadAnnouncement(invoices, {
+      filterActive,
+      filteredCount: filteredInvoices.length,
     });
 
     // Restore focus on next tick so the button is still in the DOM when we focus it.
@@ -190,83 +243,18 @@ export function InvestMarketplace({ loadInvoices = loadMockInvoices }) {
           {statusMessage}
         </p>
 
-        {/* Filter Controls - Disabled with Coming Soon Indicators */}
+        {/* Filter Controls */}
         <div className="mb-8 rounded-xl border border-slate-800 bg-slate-900/30 p-6">
           <div className="flex flex-wrap gap-4 items-center">
-            {/* Issuer Search */}
             <InvoiceSearch
               value={searchQuery}
               onChange={handleSearchChange}
             />
-
-            {/* Yield Range Filter */}
-            <div className="flex items-center gap-2">
-              <Button variant="secondary" disabled>
-  Coming Soon
-</Button>
-              <span className="inline-flex items-center rounded-full bg-slate-700/60 px-2.5 py-1 text-xs font-medium text-slate-300">Soon</span>
-            </div>
-
-            {/* Currency Filter */}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled
-                className="rounded-lg border border-slate-700 bg-slate-800/50 px-4 py-2 text-sm text-slate-500 cursor-not-allowed opacity-60 transition-colors"
-                aria-label="Currency filter (coming soon)"
-              >
-                Currency
-                <svg className="inline-block ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              <span className="inline-flex items-center rounded-full bg-slate-700/60 px-2.5 py-1 text-xs font-medium text-slate-300">Soon</span>
-            </div>
-
-            {/* Maturity Date Filter */}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled
-                className="rounded-lg border border-slate-700 bg-slate-800/50 px-4 py-2 text-sm text-slate-500 cursor-not-allowed opacity-60 transition-colors"
-                aria-label="Maturity date filter (coming soon)"
-              >
-                Maturity Date
-                <svg className="inline-block ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              <span className="inline-flex items-center rounded-full bg-slate-700/60 px-2.5 py-1 text-xs font-medium text-slate-300">Soon</span>
-            </div>
-
-            {/* Sort Options */}
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled
-                className="rounded-lg border border-slate-700 bg-slate-800/50 px-4 py-2 text-sm text-slate-500 cursor-not-allowed opacity-60 transition-colors"
-                aria-label="Sort options (coming soon)"
-              >
-                Sort: Best Yield
-                <svg className="inline-block ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              <span className="inline-flex items-center rounded-full bg-slate-700/60 px-2.5 py-1 text-xs font-medium text-slate-300">Soon</span>
-            </div>
-
-            {/* Clear Filters - Also Disabled */}
-            <div className="flex items-center gap-2 ml-auto">
-              <button
-                type="button"
-                disabled
-                className="rounded-lg border border-slate-700 bg-slate-800/50 px-4 py-2 text-sm text-slate-500 cursor-not-allowed opacity-60 transition-colors"
-                aria-label="Clear filters (coming soon)"
-              >
-                Clear Filters
-              </button>
-              <span className="inline-flex items-center rounded-full bg-slate-700/60 px-2.5 py-1 text-xs font-medium text-slate-300">Soon</span>
-            </div>
+            <InvoiceFilters
+              filters={filters}
+              onFilterChange={setFilters}
+              onClearFilters={() => setFilters(DEFAULT_FILTERS)}
+            />
           </div>
         </div>
 
@@ -281,33 +269,34 @@ export function InvestMarketplace({ loadInvoices = loadMockInvoices }) {
           <InvoiceListSkeleton rows={3} />
         ) : allInvoices.length === 0 ? (
           <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-8 text-center text-slate-300">{copy.invest.emptyState}</div>
-        ) : isNoMatchState ? (
-          <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-8 text-center text-slate-300">
-            No invoices match your search.
-          </div>
+        ) : filteredInvoices.length === 0 ? (
+          <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-8 text-center text-slate-300">No invoices match your filters.</div>
         ) : (
           <>
             <ul className="space-y-4">
-              {visibleInvoices.map((inv) => (
-                <li
-                  key={inv.id}
-                  className="rounded-xl border border-slate-800 bg-slate-900/50 p-5"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="font-medium text-slate-100">
-                      {inv.issuer}
-                    </span>
-                    <span className="text-xs font-semibold px-2 py-1 rounded-full bg-cyan-900/60 text-cyan-300">
-                      {inv.status}
-                    </span>
-                  </div>
-                  <div className="flex gap-6 text-sm text-slate-300">
-                    <span>
-                      {inv.currency}&nbsp;{inv.amount}
-                    </span>
-                    <span>Est. yield&nbsp;{inv.yield}</span>
-                    <span>Maturity&nbsp;{inv.dueDate}</span>
-                  </div>
+              {filteredInvoices.map((inv) => (
+                <li key={inv.id}>
+                  <Link
+                    href={`/invest/${inv.id}`}
+                    className="block rounded-xl border border-slate-800 bg-slate-900/50 p-5 hover:border-cyan-500/50 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-400"
+                    aria-label={`View details for ${inv.issuer} invoice ${inv.id}`}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="font-medium text-slate-100">
+                        {inv.issuer}
+                      </span>
+                      <span className="text-xs font-semibold px-2 py-1 rounded-full bg-cyan-900/60 text-cyan-300">
+                        {inv.status}
+                      </span>
+                    </div>
+                    <div className="flex gap-6 text-sm text-slate-300">
+                      <span>
+                        {inv.currency}&nbsp;{inv.amount}
+                      </span>
+                      <span>Est. yield&nbsp;{inv.yield}</span>
+                      <span>Maturity&nbsp;{inv.dueDate}</span>
+                    </div>
+                  </Link>
                 </li>
               ))}
             </ul>
